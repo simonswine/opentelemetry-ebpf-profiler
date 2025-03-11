@@ -1978,5 +1978,19 @@
     "name": "TraceEventReadError",
     "field": "agent.errors.trace_event_read_error",
     "id": 274
+  },
+    {
+    "description": "Number of successfully symbolized Golang frames",
+    "type": "counter",
+    "name": "GolangSymbolizationSuccess",
+    "field": "agent.golang.symbolization.successes",
+    "id": 275
+  },
+  {
+    "description": "Number of Golang frames that failed symbolization",
+    "type": "counter",
+    "name": "GolangSymbolizationFailure",
+    "field": "agent.golang.symbolization.failures",
+    "id": 276
   }
 ]

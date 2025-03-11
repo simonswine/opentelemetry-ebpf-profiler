@@ -638,6 +638,12 @@ const (
 	// Number of times a trace event read failed (trace_events)
 	IDTraceEventReadError = 274
 
+	// Number of successfully symbolized Golang frames
+	IDGolangSymbolizationSuccess = 275
+
+	// Number of Golang frames that failed symbolization
+	IDGolangSymbolizationFailure = 276
+
 	// max number of ID values, keep this as *last entry*
-	IDMax = 275
+	IDMax = 277
 )
