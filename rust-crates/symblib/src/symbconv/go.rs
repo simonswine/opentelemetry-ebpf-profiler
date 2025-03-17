@@ -8,6 +8,7 @@
 
 use crate::{debug, gosym, objfile, symbfile, AnyError};
 use fallible_iterator::FallibleIterator as _;
+use smallvec::SmallVec;
 
 /// Result type shorthand.
 pub type Result<T = (), E = Error> = std::result::Result<T, E>;
@@ -68,8 +69,25 @@ fn extract_ranges(obj: &objfile::Reader<'_>, visitor: super::RangeVisitor<'_>) -
 
     let mut func_iter = go.funcs()?;
     while let Some(func) = func_iter.next()? {
-        // Infer end of function from line tables.
-        let Some(end) = func.line_mapping()?.map(|(rng, _)| Ok(rng.end)).max()? else {
+
+
+        // Infer end of function from line tables and build the line table.
+        let start = func.start_addr();
+        let mut line_table = SmallVec::<[symbfile::LineTableEntry; 8]>::new(); // initialize an empty vector
+        let Some(end) = func.line_mapping()?.map(|(rng, line)| {
+            match line {
+                Some(l) => {
+                    if rng.start < rng.end {
+                        line_table.push(symbfile::LineTableEntry {
+                            offset: (rng.start - start) as u32,
+                        line_number: l,
+                    });
+                }
+            },
+                None => {},
+            }
+            Ok(rng.end)
+        }).max()? else {
             debug!(
                 "WARN: unable to determine end of function ({})",
                 func.name()?
@@ -78,7 +96,7 @@ fn extract_ranges(obj: &objfile::Reader<'_>, visitor: super::RangeVisitor<'_>) -
             continue;
         };
 
-        let length = end.saturating_sub(func.start_addr());
+        let length = end.saturating_sub(start);
         if length == 0 {
             debug!("WARN: zero function length ({})", func.name()?);
             stats.funcs_skipped += 1;
@@ -101,7 +119,7 @@ fn extract_ranges(obj: &objfile::Reader<'_>, visitor: super::RangeVisitor<'_>) -
             call_file: None,
             call_line: None,
             depth: 0,
-            line_table: Default::default(),
+            line_table: line_table.to_owned(),
         };
 
         visitor(range).map_err(Error::Visitor)?;
