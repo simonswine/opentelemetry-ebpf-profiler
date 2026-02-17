@@ -647,6 +647,9 @@ const (
 	// Number of failed attempts to read a CME by exceeding max EP checks
 	IDUnwindRubyErrCmeMaxEp = 285
 
+	// Number of traces filtered due to PID namespace mismatch
+	IDNamespaceFiltered = 286
+
 	// max number of ID values, keep this as *last entry*
-	IDMax = 286
+	IDMax = 287
 )

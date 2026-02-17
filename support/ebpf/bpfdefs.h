@@ -98,6 +98,21 @@ static inline int bpf_get_stackid(UNUSED void *ctx, UNUSED void *map, UNUSED u64
 // definitions of bpf helper functions we need, as found in
 // https://elixir.bootlin.com/linux/v4.11/source/samples/bpf/bpf_helpers.h
 
+// BPF_CORE_READ_INTO reads a field from a kernel structure using CO-RE (Compile Once, Run Everywhere)
+// to ensure portability across different kernel versions. It stores the result in the provided dst pointer.
+#define BPF_CORE_READ_INTO(dst, src, field)                                                        \
+  ({                                                                                               \
+    bpf_probe_read_kernel(dst, sizeof(*(dst)), (void *)&((src)->field));                          \
+  })
+
+// BPF_CORE_READ reads a field from a kernel structure using CO-RE and returns the value directly.
+#define BPF_CORE_READ(src, field)                                                                  \
+  ({                                                                                               \
+    typeof((src)->field) __val;                                                                    \
+    BPF_CORE_READ_INTO(&__val, src, field);                                                        \
+    __val;                                                                                         \
+  })
+
 static void *(*bpf_map_lookup_elem)(void *map, void *key) = (void *)BPF_FUNC_map_lookup_elem;
 static int (*bpf_map_update_elem)(void *map, void *key, void *value, u64 flags) = (void *)
   BPF_FUNC_map_update_elem;

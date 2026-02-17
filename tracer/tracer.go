@@ -30,6 +30,7 @@ import (
 	"go.opentelemetry.io/ebpf-profiler/libpf/xsync"
 	"go.opentelemetry.io/ebpf-profiler/metrics"
 	"go.opentelemetry.io/ebpf-profiler/nativeunwind/elfunwindinfo"
+	"go.opentelemetry.io/ebpf-profiler/nsfilter"
 	"go.opentelemetry.io/ebpf-profiler/periodiccaller"
 	pm "go.opentelemetry.io/ebpf-profiler/processmanager"
 	pmebpf "go.opentelemetry.io/ebpf-profiler/processmanager/ebpf"
@@ -164,6 +165,14 @@ type Config struct {
 	// LoadProbe indicates whether the generic eBPF program should be loaded
 	// without being attached to something.
 	LoadProbe bool
+	// NamespaceFiltering enables PID namespace filtering. When enabled, only
+	// processes in the same namespace (or child namespaces) as the profiler
+	// will be profiled.
+	NamespaceFiltering bool
+	// TargetPIDNamespace specifies the target PID namespace inode. If 0,
+	// the profiler's own namespace is used. Only relevant when NamespaceFiltering
+	// is enabled.
+	TargetPIDNamespace uint64
 }
 
 // hookPoint specifies the group and name of the hooked point in the kernel.
@@ -261,6 +270,50 @@ func NewTracer(ctx context.Context, cfg *Config) (*Tracer, error) {
 		samplesPerSecond:       cfg.SamplesPerSecond,
 		probabilisticInterval:  cfg.ProbabilisticInterval,
 		probabilisticThreshold: cfg.ProbabilisticThreshold,
+	}
+
+	// Configure namespace filtering if enabled
+	if cfg.NamespaceFiltering {
+		targetNS := cfg.TargetPIDNamespace
+		if targetNS == 0 {
+			// Auto-detect: use the profiler's own namespace
+			detectedNS, err := nsfilter.GetCurrentPIDNamespace()
+			if err != nil {
+				return nil, fmt.Errorf("failed to detect PID namespace: %v", err)
+			}
+			targetNS = detectedNS
+			log.Infof("Auto-detected PID namespace inode: %d", targetNS)
+		} else {
+			log.Infof("Using configured PID namespace inode: %d", targetNS)
+		}
+
+		// Populate the namespace_config eBPF map
+		namespaceConfigMap, ok := ebpfMaps["namespace_config"]
+		if !ok {
+			return nil, fmt.Errorf("namespace_config map not found")
+		}
+
+		// Create the configuration struct matching the eBPF NamespaceConfig type
+		type namespaceConfig struct {
+			TargetPIDNsInode  uint64
+			EnableFiltering   bool
+			_                 [7]byte // padding to match struct alignment
+		}
+
+		config := namespaceConfig{
+			TargetPIDNsInode: targetNS,
+			EnableFiltering:  true,
+		}
+
+		key := uint32(0)
+		if err := namespaceConfigMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&config),
+			cebpf.UpdateAny); err != nil {
+			return nil, fmt.Errorf("failed to update namespace_config map: %v", err)
+		}
+
+		log.Infof("Namespace filtering enabled: target inode %d", targetNS)
+	} else {
+		log.Info("Namespace filtering disabled")
 	}
 
 	// Use an optimized version if available

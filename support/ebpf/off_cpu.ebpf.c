@@ -33,6 +33,11 @@ int tracepoint__sched_switch(UNUSED void *ctx)
     return 0;
   }
 
+  // Check if PID belongs to target namespace (if filtering is enabled)
+  if (!check_pid_namespace(pid)) {
+    return 0;
+  }
+
   if (bpf_get_prandom_u32() > off_cpu_threshold) {
     return 0;
   }

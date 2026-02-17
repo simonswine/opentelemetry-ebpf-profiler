@@ -125,6 +125,16 @@ struct apm_int_procs_t {
   __uint(max_entries, 128);
 } apm_int_procs SEC(".maps");
 
+// namespace_config holds the configuration for PID namespace filtering.
+// This is a single-entry array map that stores the target namespace inode
+// and whether filtering is enabled.
+struct namespace_config_t {
+  __uint(type, BPF_MAP_TYPE_ARRAY);
+  __type(key, u32);
+  __type(value, NamespaceConfig);
+  __uint(max_entries, 1);
+} namespace_config SEC(".maps");
+
 // filter_error_frames is set during load time.
 BPF_RODATA_VAR(bool, filter_error_frames, false)
 

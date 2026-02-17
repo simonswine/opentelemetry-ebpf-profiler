@@ -98,6 +98,78 @@ static inline EBPF_INLINE bool pid_information_exists(int pid)
   return bpf_map_lookup_elem(&pid_page_to_mapping_info, &key) != NULL;
 }
 
+// check_pid_namespace checks if the given PID belongs to the target PID namespace
+// or any of its child namespaces (up to 4 levels deep).
+// Returns true if the PID should be profiled, false if it should be filtered out.
+static inline EBPF_INLINE bool check_pid_namespace(pid_t pid)
+{
+  // Lookup the namespace configuration
+  u32 key                    = 0;
+  NamespaceConfig *ns_config = bpf_map_lookup_elem(&namespace_config, &key);
+
+  // If filtering is disabled or config not found, allow all PIDs
+  if (!ns_config || !ns_config->enable_filtering || ns_config->target_pid_ns_inode == 0) {
+    return true;
+  }
+
+  // Get the current task_struct
+  struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+  if (!task) {
+    return true; // Allow if we can't get task info
+  }
+
+  // Read the nsproxy pointer from task->nsproxy
+  void *nsproxy = NULL;
+  if (BPF_CORE_READ_INTO(&nsproxy, task, nsproxy) < 0 || !nsproxy) {
+    return true; // Allow if we can't read nsproxy
+  }
+
+  // Read the pid_ns_for_children from nsproxy->pid_ns_for_children
+  void *pid_ns = NULL;
+  if (bpf_probe_read_kernel(&pid_ns, sizeof(pid_ns),
+                            (void *)nsproxy + offsetof(struct nsproxy, pid_ns_for_children)) < 0 ||
+      !pid_ns) {
+    return true; // Allow if we can't read pid namespace
+  }
+
+  // Walk up to 4 levels of namespace hierarchy to check for a match
+  // This handles nested containers (e.g., kind, minikube)
+  UNROLL
+  for (int i = 0; i < 4; i++) {
+    if (!pid_ns) {
+      break;
+    }
+
+    // Read the namespace inode number (ns.inum field)
+    u64 ns_inode = 0;
+    // The ns field is embedded in pid_namespace at offset 0
+    // and inum is at offset 0 within ns
+    if (bpf_probe_read_kernel(&ns_inode, sizeof(ns_inode),
+                              (void *)pid_ns + offsetof(struct ns_common, inum)) < 0) {
+      break;
+    }
+
+    // Check if this namespace matches the target
+    if (ns_inode == ns_config->target_pid_ns_inode) {
+      DEBUG_PRINT("PID %d matches namespace inode %llu at level %d", pid, ns_inode, i);
+      return true;
+    }
+
+    // Move to the parent namespace
+    void *parent_ns = NULL;
+    if (bpf_probe_read_kernel(&parent_ns, sizeof(parent_ns),
+                              (void *)pid_ns + offsetof(struct pid_namespace, parent)) < 0) {
+      break;
+    }
+    pid_ns = parent_ns;
+  }
+
+  // No match found in the namespace hierarchy - filter out this PID
+  DEBUG_PRINT("PID %d filtered: namespace mismatch", pid);
+  increment_metric(metricID_NamespaceFiltered);
+  return false;
+}
+
 // Reset the ratelimit cache
 #define RATELIMIT_ACTION_RESET   0
 // Use default timer
@@ -737,6 +809,11 @@ static inline EBPF_INLINE int collect_trace(
 
   if (pid == 0) {
     tail_call(ctx, PROG_UNWIND_STOP);
+    return 0;
+  }
+
+  // Check if PID belongs to target namespace (if filtering is enabled)
+  if (!check_pid_namespace(pid)) {
     return 0;
   }
 

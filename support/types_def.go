@@ -306,4 +306,5 @@ var MetricsTranslation = []metrics.MetricID{
 	C.metricID_UnwindRubyErrReadSvar:                      metrics.IDUnwindRubyErrReadSvar,
 	C.metricID_UnwindRubyErrReadRbasicFlags:               metrics.IDUnwindRubyErrReadRbasicFlags,
 	C.metricID_UnwindRubyErrCmeMaxEp:                      metrics.IDUnwindRubyErrCmeMaxEp,
+	C.metricID_NamespaceFiltered:                          metrics.IDNamespaceFiltered,
 }

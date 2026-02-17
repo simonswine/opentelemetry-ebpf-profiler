@@ -12,6 +12,11 @@ static EBPF_INLINE int probe__generic(struct pt_regs *ctx)
     return 0;
   }
 
+  // Check if PID belongs to target namespace (if filtering is enabled)
+  if (!check_pid_namespace(pid)) {
+    return 0;
+  }
+
   u64 ts = bpf_ktime_get_ns();
 
   return collect_trace(ctx, TRACE_PROBE, pid, tid, ts, 0);

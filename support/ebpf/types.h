@@ -325,6 +325,9 @@ enum {
   // number of failed attempts to read a CME by exceeding max EP checks
   metricID_UnwindRubyErrCmeMaxEp,
 
+  // number of traces filtered due to namespace mismatch
+  metricID_NamespaceFiltered,
+
   //
   // Metric IDs above are for counters (cumulative values)
   //
@@ -1007,5 +1010,13 @@ typedef struct GoLabelsOffsets {
   u32 hmap_buckets;
   s32 tls_offset;
 } GoLabelsOffsets;
+
+// NamespaceConfig contains the configuration for PID namespace filtering
+typedef struct NamespaceConfig {
+  // target_pid_ns_inode is the inode number of the target PID namespace
+  u64 target_pid_ns_inode;
+  // enable_filtering indicates whether namespace filtering is enabled
+  bool enable_filtering;
+} NamespaceConfig;
 
 #endif // OPTI_TYPES_H
